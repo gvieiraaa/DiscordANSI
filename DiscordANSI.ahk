@@ -2,15 +2,19 @@ class DiscordANSI {
 	__New(exclude_white?) {
 		this.parsed := ""
 		this.exclude_white := exclude_white??True
-		Try this.html_data := this.get_data()
+		this.html_data := this.get_data()
 	}
 
 	get_data() {
 		data := this.get_clipboard_html()
 		hf := ComObject("htmlfile")
 		hf.write(data)
-		body_content := hf.getElementsByTagName("body")(0)
-		this.default_color := hf.getElementsByTagName("div")(0).style.color
+		Try {
+			body_content := hf.getElementsByTagName("body")(0)
+			this.default_color := this.color_rgb(hf.getElementsByTagName("div")(0).style.color)
+		}
+		catch PropertyError
+			return
 		this.parsed := Format("``````ansi`n{}``````", this.recursive_parse(body_content))
 	}
 
@@ -22,7 +26,7 @@ class DiscordANSI {
 				return "`n"		
 			if HtmlElement.InnerText == ""
 				return ""
-			return this.ansi_escape(HtmlElement.InnerText, HtmlElement.style.color)
+			return this.ansi_escape(HtmlElement.InnerText, this.color_rgb(HtmlElement.style.color))
 		}
 		s := ""
 		Loop children.length { 
@@ -33,11 +37,28 @@ class DiscordANSI {
 		return s
 	}
 
-	ansi_escape(string, color) {
-		r := Format("0x{}", SubStr(color, 2, 2)) + 0
-		g := Format("0x{}", SubStr(color, 4, 2)) + 0
-		b := Format("0x{}", SubStr(color, 6, 2)) + 0
-		return Format("[2;3{}m{}", color==this.default_color?9:this.get_closest_color(r, g, b), string)
+	color_rgb(color) {
+		if (SubStr(color, 1, 3) == "rgb") {
+			colors := StrSplit(color, ["(", ")", ","])
+			r := colors[2] + 0
+			g := colors[3] + 0
+			b := colors[4] + 0
+		}
+		Else {
+			r := Format("0x{}", SubStr(color, 2, 2)) + 0
+			g := Format("0x{}", SubStr(color, 4, 2)) + 0
+			b := Format("0x{}", SubStr(color, 6, 2)) + 0
+		}
+		return [r, g, b]
+	}
+
+	ansi_escape(string, colors) {
+		default := True
+		Loop 3 {
+			if colors[A_Index] != this.default_color[A_Index]
+				default := False
+		}
+		return Format("{}[2;3{}m{}", Chr(0x1B), default?9:this.get_closest_color(colors*), string)
 	}
 	
 	get_closest_color(r, g, b) {
@@ -47,7 +68,7 @@ class DiscordANSI {
 	
 		min_distance := 256**3
 		closest := 0
-		for _, color in colors {
+		for color in colors {
 			sum := 0
 			sum += (color[1] - r) ** 2
 			sum += (color[2] - g) ** 2
@@ -61,7 +82,7 @@ class DiscordANSI {
 	}
 	 
 	get_clipboard_html() {
-		if !DllCall("IsClipboardFormatAvailable", "uint", HTML_FORMAT := 49352)
+		if !DllCall("IsClipboardFormatAvailable", "uint", HTML_FORMAT := DllCall("RegisterClipboardFormatW", "ptr", StrPtr("HTML Format"), "uint"))
 			return
 		DllCall("OpenClipboard", "ptr", A_ScriptHwnd)
 		hData := DllCall("GetClipboardData", "uint", HTML_FORMAT)
